@@ -9,6 +9,7 @@ contract DSCEngine {
     error DSCEng_TokenNotSupported();
     error DSCEng_TokenTransferFailed();
     error DSCEng_UserHealthFactorBroken();
+    error DSCEng_DscMintFailed();
 
     event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
 
@@ -65,6 +66,10 @@ contract DSCEngine {
        s_dscMinted[msg.sender] += amountDsc;
        //the revert will revert the last line of the function
        _revertIfTheUserHealthFactorIsBroken(msg.sender);
+       bool minted = i_dsc.mint(msg.sender, amountDsc);
+       if (!minted) {
+              revert DSCEng_DscMintFailed();
+       }
     }
 
     //return how close to liquidation a user is,
