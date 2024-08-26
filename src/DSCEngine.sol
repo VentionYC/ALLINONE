@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
-import {DecentralizedStableCoin} from "./DecentrailzedStableCoin.sol";
+import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 contract DSCEngine {
