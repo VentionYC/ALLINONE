@@ -22,7 +22,7 @@ contract DSCEngineTest is Test {
     function setUp() public {
         deployer = new DeployDSC();
         (dsc, dsce, helperConfig) =  deployer.run();
-        (ethUsdPriceFeed, weth, , , ) = helperConfig.activeNetworkConfig();    }
+        (ethUsdPriceFeed, ,weth , , ) = helperConfig.activeNetworkConfig();    }
 
     //the most important, test for get the usd value for the token
     //price test
