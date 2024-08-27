@@ -47,6 +47,9 @@ contract DSCEngine {
         i_dsc = DecentralizedStableCoin(dsc);
     }
 
+    //if someone is almost undercollaterallized, wen will pay you to liquidate them!
+    function liquidate() external {}
+
     function depositCollateralAndMintDsc(
         address tokenCollateralAddress,
         uint256 amountCollateral,
