@@ -11,6 +11,7 @@ contract DSCEngine {
     error DSCEng_UserHealthFactorBroken();
     error DSCEng_DscMintFailed();
 
+    event RedemedCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
     event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
 
     DecentralizedStableCoin private immutable i_dsc;
@@ -46,8 +47,18 @@ contract DSCEngine {
         i_dsc = DecentralizedStableCoin(dsc);
     }
 
+    function depositCollateralAndMintDsc(
+        address tokenCollateralAddress,
+        uint256 amountCollateral,
+        uint256 amountDsc
+    ) external NoZeroTx(amountCollateral) NoZeroTx(amountDsc) {
+        depositCollateral(tokenCollateralAddress, amountCollateral);
+        mintDsc(amountDsc);
+    }
 
-    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) external NoZeroTx(amountCollateral) {
+
+
+    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public NoZeroTx(amountCollateral) {
                 //emit event after state var is set
                 //every time when depositCollateral is called, if the collateralOwner is the same, 
                 //and the tokenCollateralAddress is the same, 
@@ -70,6 +81,36 @@ contract DSCEngine {
        if (!minted) {
               revert DSCEng_DscMintFailed();
        }
+    }
+
+    //health factor has to be greater than 1 after redeem certain amount of collateral
+    function redeemCollateral(address tokenCollateralAddress, uint256 amountOfCollateral) public NoZeroTx(amountOfCollateral) {
+        s_collateralRecorded[msg.sender][tokenCollateralAddress] -= amountOfCollateral;
+        emit RedemedCollateral(msg.sender, tokenCollateralAddress, amountOfCollateral);
+        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountOfCollateral);
+        if (!success) {
+            revert DSCEng_TokenTransferFailed();
+        }
+        _revertIfTheUserHealthFactorIsBroken(msg.sender);
+    }
+
+    function burnDsc(uint256 amount) public NoZeroTx(amount){
+        s_dscMinted[msg.sender] -= amount;
+        bool success = i_dsc.transferFrom(msg.sender, address(this), amount);
+
+        if (!success) {
+            revert DSCEng_TokenTransferFailed();  
+        }
+        i_dsc.burn(amount);
+
+    }
+
+    function redeemCollateralAndBurnDsc(address tokenCollateralAddress,
+                                        uint256 amountOfCollateral,
+                                        uint256 amountOfDscToBurn) external {
+        burnDsc(amountOfDscToBurn);
+        redeemCollateral(tokenCollateralAddress, amountOfCollateral);   
+
     }
 
     //return how close to liquidation a user is,
@@ -115,6 +156,8 @@ contract DSCEngine {
 
         return (uint256(price) * 1e10 * amount)/ 1e18;
     }
+
+
     
 
 }
