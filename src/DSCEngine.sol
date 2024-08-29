@@ -10,6 +10,7 @@ contract DSCEngine {
     error DSCEng_TokenTransferFailed();
     error DSCEng_UserHealthFactorBroken();
     error DSCEng_DscMintFailed();
+    error DSCEng_UserStillSafe();
 
     event RedemedCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
     event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
@@ -48,7 +49,19 @@ contract DSCEngine {
     }
 
     //if someone is almost undercollaterallized, wen will pay you to liquidate them!
-    function liquidate() external {}
+    function liquidate(address collateral, address user, uint256 debtToCover) external NoZeroTx(debtToCover) {
+        uint256 userHealthFactor = _getTheHealthFactor(user);
+        if (userHealthFactor >= 1) {
+        revert DSCEng_UserStillSafe();     
+        }
+
+        //burn the dsc so called debt, and then take their collateral
+        uint256 dscToBurnInCollateralToken = getTokenAmountForUSD(collateral, debtToCover);
+        //10% bonus for liquidator
+        uint256 bounsCollateral = (dscToBurnInCollateralToken * 10) / 100;
+        //???
+        uint256 totalCollateralToRedeem = dscToBurnInCollateralToken + bounsCollateral;
+    }
 
     function depositCollateralAndMintDsc(
         address tokenCollateralAddress,
@@ -158,6 +171,14 @@ contract DSCEngine {
         (,int256 price,,,) = priceFeed.latestRoundData();
 
         return (uint256(price) * 1e10 * amount)/ 1e18;
+    }
+
+    function getTokenAmountForUSD(address token, uint256 USDValueInWei) public view returns (uint256 tokenAmount) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeed[token]);
+        (,int256 price,,,) = priceFeed.latestRoundData();
+        //(uint256(price) * 1e10 * returnAmount)/ 1e18 = USDValue
+        //returnAmount = USDValue * 1e18 / (uint256(price) * 1e10)
+        return (USDValueInWei * 1e18) / (uint256(price) * 1e10);
     }
 
 
