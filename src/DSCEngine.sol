@@ -4,30 +4,37 @@ import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 contract DSCEngine {
-
+    //////////////////////////
+    // Error Messages     //
+    //////////////////////////
     error DSCEng_NoZeroTxPlease();
     error DSCEng_TokenNotSupported();
     error DSCEng_TokenTransferFailed();
     error DSCEng_UserHealthFactorBroken();
     error DSCEng_DscMintFailed();
     error DSCEng_UserStillSafe();
-
-    event RedemedCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
-    event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
-
+    error DSCEng_UserHealthFactroNotImproved();
+    
+    //////////////////////////
+    // My Dsc Contract     //
+    //////////////////////////
     DecentralizedStableCoin private immutable i_dsc;
 
-    //State mapping for allow list of token
+    //INIT in the constructor, used in chainlink to get the market price of the token
     mapping (address token => address priceFeed) private s_tokenToPriceFeed;
+    //The value will be changed in the user accont during the deposit(plus) and redeem(minus) process
     mapping (address collateralOwner => mapping (address token => uint256 amount)) private s_collateralRecorded;
+    //The value will be changed in the user account during the mint(plus) and burn(minus) process
     mapping (address collateralOwner => uint256 amount) private s_dscMinted;
 
+    //INIT in the constructor
     address[] private s_collateral_tokens;
 
+    event RedemedCollateral(address indexed collateralOwner, address indexed redeemExcutor, address indexed tokenCollateralAddress, uint256 amountCollateral);
+    event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
+
     modifier NoZeroTx (uint256 amount) {
-        if (amount ==0) {
-            revert DSCEng_NoZeroTxPlease();
-        }
+        if (amount ==0) {revert DSCEng_NoZeroTxPlease();}
         _;
     }
 
@@ -36,7 +43,8 @@ contract DSCEngine {
         
         _;
     }
-    //why passed list of tokens and priceFeeds?
+
+    //the dsc is the address of the DecentralizedStableCoin contract which I will have to deploy first
     constructor(address[] memory tokens, address[] memory priceFeeds, address dsc) {
         //the length of the tokens and priceFeeds should be the same
         if(tokens.length != priceFeeds.length) {
@@ -44,12 +52,13 @@ contract DSCEngine {
         }
         for(uint256 i=0; i<tokens.length; i++){
             s_tokenToPriceFeed[tokens[i]] = priceFeeds[i];
+            s_collateral_tokens.push(tokens[i]);
         }
         i_dsc = DecentralizedStableCoin(dsc);
     }
 
     //if someone is almost undercollaterallized, wen will pay you to liquidate them!
-    function liquidate(address collateral, address user, uint256 debtToCover) external NoZeroTx(debtToCover) {
+    function liquidate(address collateral, address user, uint256 debtToCover) external  NoZeroTx(debtToCover) {
         uint256 userHealthFactor = _getTheHealthFactor(user);
         if (userHealthFactor >= 1) {
         revert DSCEng_UserStillSafe();     
@@ -61,6 +70,13 @@ contract DSCEngine {
         uint256 bounsCollateral = (dscToBurnInCollateralToken * 10) / 100;
         //???
         uint256 totalCollateralToRedeem = dscToBurnInCollateralToken + bounsCollateral;
+        _redeemCollateral(collateral, totalCollateralToRedeem, user, msg.sender);
+        _burnDsc(debtToCover, user, msg.sender);
+        uint256 endingUserHealthFactor = _getTheHealthFactor(user);
+        if (endingUserHealthFactor <= userHealthFactor) {
+            revert DSCEng_UserHealthFactroNotImproved();
+        }
+        _revertIfTheUserHealthFactorIsBroken(msg.sender);
     }
 
     function depositCollateralAndMintDsc(
@@ -101,24 +117,33 @@ contract DSCEngine {
 
     //health factor has to be greater than 1 after redeem certain amount of collateral
     function redeemCollateral(address tokenCollateralAddress, uint256 amountOfCollateral) public NoZeroTx(amountOfCollateral) {
-        s_collateralRecorded[msg.sender][tokenCollateralAddress] -= amountOfCollateral;
-        emit RedemedCollateral(msg.sender, tokenCollateralAddress, amountOfCollateral);
-        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountOfCollateral);
-        if (!success) {
-            revert DSCEng_TokenTransferFailed();
-        }
+        _redeemCollateral(tokenCollateralAddress, amountOfCollateral, msg.sender, msg.sender);
         _revertIfTheUserHealthFactorIsBroken(msg.sender);
     }
 
+    function _redeemCollateral(address tokenCollateralAddress, uint256 amountOfCollateral, address userTobeLiquidated, address redeemExcutor) private {
+        s_collateralRecorded[userTobeLiquidated][tokenCollateralAddress] -= amountOfCollateral;
+        emit RedemedCollateral(userTobeLiquidated, redeemExcutor, tokenCollateralAddress, amountOfCollateral);
+        bool success = IERC20(tokenCollateralAddress).transfer(redeemExcutor, amountOfCollateral);
+        if (!success) {
+            revert DSCEng_TokenTransferFailed();
+        }
+    }
+
     function burnDsc(uint256 amount) public NoZeroTx(amount){
-        s_dscMinted[msg.sender] -= amount;
-        bool success = i_dsc.transferFrom(msg.sender, address(this), amount);
+        _burnDsc(amount, msg.sender, msg.sender);
+        _revertIfTheUserHealthFactorIsBroken(msg.sender);
+
+    }
+
+    function _burnDsc(uint256 amount, address user, address liquidator) private {
+        s_dscMinted[user] -= amount;
+        bool success = i_dsc.transferFrom(liquidator, address(this), amount);
 
         if (!success) {
             revert DSCEng_TokenTransferFailed();  
         }
         i_dsc.burn(amount);
-
     }
 
     function redeemCollateralAndBurnDsc(address tokenCollateralAddress,
