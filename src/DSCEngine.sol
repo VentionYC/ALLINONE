@@ -40,7 +40,9 @@ contract DSCEngine {
 
     modifier IsSupportedToken (address token) {
         //if the token is not in the allow list then revert
-        
+        if(s_tokenToPriceFeed[token] == address(0)) {
+            revert DSCEng_TokenNotSupported();
+        }
         _;
     }
 
@@ -90,7 +92,7 @@ contract DSCEngine {
 
 
 
-    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public NoZeroTx(amountCollateral) {
+    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public NoZeroTx(amountCollateral) IsSupportedToken(tokenCollateralAddress) {
                 //emit event after state var is set
                 //every time when depositCollateral is called, if the collateralOwner is the same, 
                 //and the tokenCollateralAddress is the same, 
@@ -170,11 +172,18 @@ contract DSCEngine {
         return (collatearValueInUSD * 50 /100 / totalDscMinted);
     }
 
+
     function _getUserAccountInfo(address user) internal view returns (uint256 totalDscMinted, uint256 totoalCollateraler) {
         uint256 totalMinted = s_dscMinted[user];
         uint256 collateralRecorded = getUserCollateralInUSD(user);
 
         return (totalMinted, collateralRecorded);
+    }
+
+    function getAccountInfo (address user) external view returns (uint256 totalDscMinted, uint256 totalCollateraler) {
+        //return _getUserAccountInfo(user);
+        //Or like this
+        (totalDscMinted, totalCollateraler) = _getUserAccountInfo(user);
     }
 
     //tool for the user to calculate their asset in USD
@@ -203,6 +212,7 @@ contract DSCEngine {
         (,int256 price,,,) = priceFeed.latestRoundData();
         //(uint256(price) * 1e10 * returnAmount)/ 1e18 = USDValue
         //returnAmount = USDValue * 1e18 / (uint256(price) * 1e10)
+        //1e10 -> + 1e8 ETH_USD_PRICE in HelperConfig -> 1e18
         return (USDValueInWei * 1e18) / (uint256(price) * 1e10);
     }
 
