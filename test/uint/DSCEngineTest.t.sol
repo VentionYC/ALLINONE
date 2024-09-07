@@ -16,26 +16,40 @@ contract DSCEngineTest is Test {
     DecentralizedStableCoin dsc;
     DSCEngine dsce;
     HelperConfig helperConfig;
+    
     address ethUsdPriceFeed;
     address btcUsdPriceFeed;
     address weth;
+    address wbtc;
     
     
     address[] public tokenAddresses;
     address[] public priceFeedAddresses;
 
     address public USER = makeAddr("user");
+    address public LIQUIDATOR = makeAddr("liquidator");
 
     uint256 public constant STARTING_ERC20_BALANCE = 10 ether;
-    uint256 public constant AMOUNT_COLLATERAL = 1 ether;
+    uint256 public constant AMOUNT_TO_MINT = 4 ether;
+    uint256 public constant AMOUNT_COLLATERAL = 9 ether;
 
-    modifier depositedCollateral() {
+    modifier depositedCollateral(){
         vm.startPrank(USER);
-        ERC20Mock(weth).approve(address(dsce), AMOUNT_COLLATERAL);
+        ERC20Mock(weth).approve(address(dsce), AMOUNT_COLLATERAL);  
         dsce.depositCollateral(weth, AMOUNT_COLLATERAL);
         vm.stopPrank();
         _;
     }
+
+    modifier depositedCollateralandMintedDsc() {
+        vm.startPrank(USER);
+        ERC20Mock(weth).approve(address(dsce), AMOUNT_COLLATERAL);
+        uint256 mintInUsd = dsce.getUSDValueForToken(weth, AMOUNT_TO_MINT);
+        dsce.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, mintInUsd);
+        vm.stopPrank();
+        _;
+    }
+    
 
     function setUp() public {
         deployer = new DeployDSC();
@@ -49,6 +63,39 @@ contract DSCEngineTest is Test {
         vm.startPrank(USER);
         vm.expectRevert(DSCEngine.DSCEng_TokenNotSupported.selector);
         dsce.depositCollateral(address(unapprovedToken), AMOUNT_COLLATERAL);
+        vm.stopPrank();
+    }
+
+    function testRevertIfUserHealthFactorBrokeAfterMint() public depositedCollateral{
+        //(uint256 dscMinted, uint256 collateralAmount) = dsce.getAccountInfo(USER);
+        uint256 collateralInUsd = dsce.getUSDValueForToken(weth, AMOUNT_COLLATERAL);
+        vm.expectRevert(DSCEngine.DSCEng_UserHealthFactorBroken.selector);
+        dsce.mintDsc(collateralInUsd/2+1, USER);
+    }
+
+      //////////////////  
+     //liquidate test//
+    //////////////////
+
+    //we didn't prank a diff persion than the USER as liquidator in this test
+    function testRevertIfUserIsHealthyDuringLiquidate() public depositedCollateral{
+        //I have to mint some DSC to the USER account
+        uint256 collateralInUsd = dsce.getUSDValueForToken(weth, AMOUNT_COLLATERAL);
+        dsce.mintDsc(collateralInUsd/10, USER);
+        //I don't have to drop the price because what I want to test is the healthy condition
+        vm.expectRevert(DSCEngine.DSCEng_UserStillSafe.selector);
+        dsce.liquidate(weth, USER,collateralInUsd/10);
+    }
+
+
+    function testRevertIfUserIsHealthyDuringLiquidateWithDifferentLiquidator() public depositedCollateralandMintedDsc{
+        // Of course, the user have to deposit some collateral first
+        // and also we need to fake another address for the liqudator
+        vm.startPrank(LIQUIDATOR);
+        //and I guess I have to mint some weth for the liqudator
+        ERC20Mock(weth).mint(LIQUIDATOR, STARTING_ERC20_BALANCE);   
+        vm.expectRevert(DSCEngine.DSCEng_UserStillSafe.selector);
+        dsce.liquidate(weth, USER, AMOUNT_COLLATERAL);
         vm.stopPrank();
     }
     

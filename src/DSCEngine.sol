@@ -87,7 +87,7 @@ contract DSCEngine {
         uint256 amountDsc
     ) external NoZeroTx(amountCollateral) NoZeroTx(amountDsc) {
         depositCollateral(tokenCollateralAddress, amountCollateral);
-        mintDsc(amountDsc);
+        mintDsc(amountDsc, msg.sender);
     }
 
 
@@ -106,16 +106,18 @@ contract DSCEngine {
                 }
     }
 
-    function mintDsc(uint256 amountDsc) public NoZeroTx(amountDsc) {
+    function mintDsc(uint256 amountDsc, address user) public NoZeroTx(amountDsc) {
        // for (uint i = 0; i < s_collateralRecorded.length; i++) {}
-       s_dscMinted[msg.sender] += amountDsc;
+       s_dscMinted[user] += amountDsc;
        //the revert will revert the last line of the function
-       _revertIfTheUserHealthFactorIsBroken(msg.sender);
+       _revertIfTheUserHealthFactorIsBroken(user);
        bool minted = i_dsc.mint(msg.sender, amountDsc);
        if (!minted) {
               revert DSCEng_DscMintFailed();
        }
     }
+
+
 
     //health factor has to be greater than 1 after redeem certain amount of collateral
     function redeemCollateral(address tokenCollateralAddress, uint256 amountOfCollateral) public NoZeroTx(amountOfCollateral) {
@@ -199,6 +201,9 @@ contract DSCEngine {
 
         return totalCollateraValueInUsd;
     }
+    /////////////////
+    //Public tools//
+    /////////////////
 
     function getUSDValueForToken(address token, uint256 amount) public view returns (uint256 valueInUSD) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeed[token]);
