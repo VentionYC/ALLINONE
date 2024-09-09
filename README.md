@@ -31,3 +31,5 @@
         a. wETH
         b. wBTC
 
+DSCEngine helps to manage the user account information and checking the user health factor so that the DSC system can remain a healthy state.
+

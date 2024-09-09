@@ -8,6 +8,8 @@ import {DSCEngine} from "../../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../../src/DecentralizedStableCoin.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
+import {MockFailedTransferFrom} from "../mocks/MockFailedTransferFrom.sol";
+import {console} from "forge-std/console.sol";
 
 
 contract DSCEngineTest is Test {
@@ -41,14 +43,7 @@ contract DSCEngineTest is Test {
         _;
     }
 
-    modifier depositedCollateralandMintedDsc() {
-        vm.startPrank(USER);
-        ERC20Mock(weth).approve(address(dsce), AMOUNT_COLLATERAL);
-        uint256 mintInUsd = dsce.getUSDValueForToken(weth, AMOUNT_TO_MINT);
-        dsce.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, mintInUsd);
-        vm.stopPrank();
-        _;
-    }
+
     
 
     function setUp() public {
@@ -148,5 +143,60 @@ contract DSCEngineTest is Test {
         dsce.depositCollateral(weth, 0);
         vm.stopPrank();
     }
+
+    function testFailedTransferWhenDeposit() public {
+        //Arrange - Depoly a new DSC contract to set the TransferFrom return false
+        address owner = msg.sender;
+        //Deploy the new fake DSC contract
+        vm.prank(owner);
+        MockFailedTransferFrom mockDsc = new MockFailedTransferFrom();
+        tokenAddresses = [address(mockDsc)];
+        priceFeedAddresses = [ethUsdPriceFeed];
+
+        //Depoly the new Fake DSC engine contract,
+        //And mint some DSC to the user account
+        vm.prank(owner);
+        DSCEngine mockDsce = new DSCEngine(tokenAddresses, priceFeedAddresses, address(mockDsc));
+        //simulate the starting balance in the setup() function
+        mockDsc.mint(USER, AMOUNT_COLLATERAL);
+
+        //Transfer the ownership like we did in the DeployDSC script
+        vm.prank(owner);
+        mockDsc.transferOwnership(address(mockDsce));
+
+        vm.startPrank(USER);
+        //For the deposit part,first we need to approve the contract to spend the money
+        ERC20Mock(address(mockDsc)).approve(address(mockDsce), AMOUNT_COLLATERAL);
+
+        //vm.expectRevert(DSCEngine.DSCEng_TokenTransferFailed.selector);
+
+        // Calculate the selector for DSCEng_TokenTransferFailed
+        bytes4 selector = bytes4(keccak256("DSCEng_TokenTransferFailed()"));
+
+        // Log the selector using Foundry's console
+        console.logBytes4(selector);
+        vm.expectRevert("DSCEng_TokenTransferFailed");
+    
+        mockDsce.depositCollateral(address(mockDsc), AMOUNT_COLLATERAL);
+        vm.stopPrank();
+
+        
+    }
+
+    modifier depositedCollateralandMintedDsc() {
+        vm.startPrank(USER);
+        ERC20Mock(weth).approve(address(dsce), AMOUNT_COLLATERAL);
+        uint256 mintInUsd = dsce.getUSDValueForToken(weth, AMOUNT_TO_MINT);
+        dsce.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, mintInUsd);
+        vm.stopPrank();
+        _;
+    }
+
+    //redeemCollateral test
+    function testRedeemCollateral() public depositedCollateralandMintedDsc{
+
+    }
+
+
 
 }
