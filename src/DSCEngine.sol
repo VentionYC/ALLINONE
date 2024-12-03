@@ -4,54 +4,43 @@ import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 contract DSCEngine {
-    //////////////////////////
-    // Error Messages     //
-    //////////////////////////
+
     error DSCEng_NoZeroTxPlease();
     error DSCEng_TokenNotSupported();
-    error DSCEng_TokenTransferFailed();
+    error DSCEng_TokenTransferFailedOps();
     error DSCEng_UserHealthFactorBroken();
     error DSCEng_DscMintFailed();
     error DSCEng_UserStillSafe();
     error DSCEng_UserHealthFactroNotImproved();
     
-    //////////////////////////
-    // My Dsc Contract     //
-    //////////////////////////
     DecentralizedStableCoin private immutable i_dsc;
-
-    //INIT in the constructor, used in chainlink to get the market price of the token
     mapping (address token => address priceFeed) private s_tokenToPriceFeed;
-    //The value will be changed in the user accont during the deposit(plus) and redeem(minus) process
-    mapping (address collateralOwner => mapping (address token => uint256 amount)) private s_collateralRecorded;
-    //The value will be changed in the user account during the mint(plus) and burn(minus) process
-    mapping (address collateralOwner => uint256 amount) private s_dscMinted;
-
-    //INIT in the constructor
     address[] private s_collateral_tokens;
+
+    mapping (address collateralOwner => mapping (address token => uint256 amount)) private s_collateralRecorded;
+    mapping (address collateralOwner => uint256 amount) private s_dscMinted;
 
     event RedemedCollateral(address indexed collateralOwner, address indexed redeemExcutor, address indexed tokenCollateralAddress, uint256 amountCollateral);
     event DepositCollateral(address indexed collateralOwner, address indexed tokenCollateralAddress, uint256 amountCollateral);
 
     modifier NoZeroTx (uint256 amount) {
-        if (amount ==0) {revert DSCEng_NoZeroTxPlease();}
+        if (amount ==0) 
+        revert DSCEng_NoZeroTxPlease();
         _;
     }
 
     modifier IsSupportedToken (address token) {
-        //if the token is not in the allow list then revert
-        if(s_tokenToPriceFeed[token] == address(0)) {
-            revert DSCEng_TokenNotSupported();
-        }
+        if(s_tokenToPriceFeed[token] == address(0)) 
+        revert DSCEng_TokenNotSupported();
         _;
     }
 
-    //the dsc is the address of the DecentralizedStableCoin contract which I will have to deploy first
+    //deploy your own dsc
     constructor(address[] memory tokens, address[] memory priceFeeds, address dsc) {
         //the length of the tokens and priceFeeds should be the same
-        if(tokens.length != priceFeeds.length) {
-            revert DSCEng_TokenNotSupported();
-        }
+        if(tokens.length != priceFeeds.length) 
+        revert DSCEng_TokenNotSupported();
+        
         for(uint256 i=0; i<tokens.length; i++){
             s_tokenToPriceFeed[tokens[i]] = priceFeeds[i];
             s_collateral_tokens.push(tokens[i]);
@@ -60,7 +49,7 @@ contract DSCEngine {
     }
 
     //if someone is almost undercollaterallized, wen will pay you to liquidate them!
-    function liquidate(address collateral, address user, uint256 debtToCover) external  NoZeroTx(debtToCover) {
+    function liquidate(address collateral, address user, uint256 debtToCover) external NoZeroTx(debtToCover) {
         uint256 userHealthFactor = _getTheHealthFactor(user);
         if (userHealthFactor >= 1) {
         revert DSCEng_UserStillSafe();     
@@ -102,8 +91,9 @@ contract DSCEngine {
                 emit DepositCollateral(msg.sender, tokenCollateralAddress, amountCollateral);
                 bool success = IERC20(tokenCollateralAddress).transferFrom(msg.sender, address(this), amountCollateral);
                 if(!success) {
-                    revert DSCEng_TokenTransferFailed();
+                    revert DSCEng_TokenTransferFailedOps();
                 }
+                
     }
 
     function mintDsc(uint256 amountDsc, address user) public NoZeroTx(amountDsc) {
@@ -130,7 +120,7 @@ contract DSCEngine {
         emit RedemedCollateral(userTobeLiquidated, redeemExcutor, tokenCollateralAddress, amountOfCollateral);
         bool success = IERC20(tokenCollateralAddress).transfer(redeemExcutor, amountOfCollateral);
         if (!success) {
-            revert DSCEng_TokenTransferFailed();
+            revert DSCEng_TokenTransferFailedOps();
         }
     }
 
@@ -145,7 +135,7 @@ contract DSCEngine {
         bool success = i_dsc.transferFrom(liquidator, address(this), amount);
 
         if (!success) {
-            revert DSCEng_TokenTransferFailed();  
+            revert DSCEng_TokenTransferFailedOps();  
         }
         i_dsc.burn(amount);
     }
@@ -167,13 +157,15 @@ contract DSCEngine {
             revert DSCEng_UserHealthFactorBroken();
         }
     }
+    function getTheHealthFactor(address user) external view returns (uint256) {
+        return _getTheHealthFactor(user);
+    }
 
     function _getTheHealthFactor(address user) internal view returns (uint256) {
         (uint256 totalDscMinted, uint256 collatearValueInUSD) = _getUserAccountInfo(user);
 
         return (collatearValueInUSD * 50 /100 / totalDscMinted);
     }
-
 
     function _getUserAccountInfo(address user) internal view returns (uint256 totalDscMinted, uint256 totoalCollateraler) {
         uint256 totalMinted = s_dscMinted[user];
@@ -201,23 +193,24 @@ contract DSCEngine {
 
         return totalCollateraValueInUsd;
     }
-    /////////////////
-    //Public tools//
-    /////////////////
+    
+    //////////////////////
+    //Public price tools//
+    //////////////////////
 
+    //token price get from chainlink price feed is in USD but * 1e8
+    //USDValueInWei is also in USD but * 1e18
+
+    //this is basicly using the chainlink returned price (in USD) but scaled
     function getUSDValueForToken(address token, uint256 amount) public view returns (uint256 valueInUSD) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeed[token]);
         (,int256 price,,,) = priceFeed.latestRoundData();
-
         return (uint256(price) * 1e10 * amount)/ 1e18;
     }
 
     function getTokenAmountForUSD(address token, uint256 USDValueInWei) public view returns (uint256 tokenAmount) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeed[token]);
         (,int256 price,,,) = priceFeed.latestRoundData();
-        //(uint256(price) * 1e10 * returnAmount)/ 1e18 = USDValue
-        //returnAmount = USDValue * 1e18 / (uint256(price) * 1e10)
-        //1e10 -> + 1e8 ETH_USD_PRICE in HelperConfig -> 1e18
         return (USDValueInWei * 1e18) / (uint256(price) * 1e10);
     }
 
