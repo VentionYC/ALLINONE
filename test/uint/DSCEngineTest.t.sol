@@ -3,14 +3,15 @@
 pragma solidity ^0.8.25;
 
 import {Test} from "forge-std/Test.sol";
+import {MockFailedTransferFromMethod} from "../mocks/MockFailedTransferFromMethod.sol";
 import {DeployDSC} from "../../script/DeployDSC.s.sol";
 import {DSCEngine} from "../../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../../src/DecentralizedStableCoin.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
-import {MockFailedTransferFrom} from "../mocks/MockFailedTransferFrom.sol";
 import {console} from "forge-std/console.sol";
 import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
+
 
 
 contract DSCEngineTest is Test {
@@ -117,7 +118,7 @@ contract DSCEngineTest is Test {
         //, it should be ERC20 token contract
         //OK fine maybe it is called properly sicne this is the token and dsc address at the same time 
         vm.prank(owner);
-        MockFailedTransferFrom mockDsc = new MockFailedTransferFrom();
+        MockFailedTransferFromMethod mockDsc = new MockFailedTransferFromMethod();
         tokenAddresses = [address(mockDsc)];
         priceFeedAddresses = [ethUsdPriceFeed];
 
@@ -143,6 +144,11 @@ contract DSCEngineTest is Test {
         vm.expectRevert(DSCEngine.DSCEng_TokenTransferFailedOps.selector);
         mockDsce.depositCollateral(address(mockDsc), AMOUNT_COLLATERAL);
         vm.stopPrank(); 
+    }
+
+    function testOnlyRevert() public {
+        vm.expectRevert(DSCEngine.DSCEng_TokenTransferFailedOps.selector);
+        dsce.onlyRevert();
     }
 
     function testRevertsIfCollateralAmountIsZero() public{

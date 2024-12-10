@@ -81,7 +81,7 @@ contract DSCEngine {
 
 
 
-    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public NoZeroTx(amountCollateral) IsSupportedToken(tokenCollateralAddress) {
+    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public {
                 //emit event after state var is set
                 //every time when depositCollateral is called, if the collateralOwner is the same, 
                 //and the tokenCollateralAddress is the same, 
@@ -93,7 +93,11 @@ contract DSCEngine {
                 if(!success) {
                     revert DSCEng_TokenTransferFailedOps();
                 }
-                
+            
+    }
+
+    function onlyRevert() public pure {
+        revert DSCEng_TokenTransferFailedOps();
     }
 
     function mintDsc(uint256 amountDsc, address user) public NoZeroTx(amountDsc) {
