@@ -81,7 +81,7 @@ contract DSCEngine {
 
 
 
-    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public {
+    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral) public IsSupportedToken(tokenCollateralAddress) NoZeroTx(amountCollateral){
                 //emit event after state var is set
                 //every time when depositCollateral is called, if the collateralOwner is the same, 
                 //and the tokenCollateralAddress is the same, 
